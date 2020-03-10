@@ -2,18 +2,24 @@ import zmq
 import threading
 from abc import ABCMeta,abstractmethod
 
-class AbsZmq(threading.Thread, metaclass=ABCMeta):
-    def __init__(self, conn_str="tcp://127.0.0.1:8331", msg_type='', timeout=2500):
+class AbsZmqSubscribe(threading.Thread, metaclass=ABCMeta):
+    """zmq 订阅客户端 - 超时重连
+    """
+    def __init__(self, conn_str="tcp://127.0.0.1:8331", msg_type='', timeout_ms=2500):
         threading.Thread.__init__(self)
 
         self.__conn_str = conn_str
         self.__msg_type = msg_type
-        self.__timeout = timeout
+        self.__timeout_ms = timeout_ms
 
         self.__context = zmq.Context(1)
         self.__poll = zmq.Poller()
 
         self.__connect()
+
+
+    def get_msg_type(self):
+        return self.__msg_type
 
     def __del__(self):
         self.__close()
@@ -31,21 +37,18 @@ class AbsZmq(threading.Thread, metaclass=ABCMeta):
         self.__socket.close()
         self.__poll.unregister(self.__socket)
 
-    def on_startup(self):
-        pass
-
     @abstractmethod
     def message_dispatcher(self, msg_list):
         pass
 
     def run(self):
-        self.on_startup()
         while True:
-            socks = dict(self.__poll.poll(self.__timeout))
+            socks = dict(self.__poll.poll(self.__timeout_ms))
             if socks.get(self.__socket) == zmq.POLLIN:
                 msg_list = self.__socket.recv_multipart()
                 self.message_dispatcher(msg_list)
             else:
+                print("zmq timeout. {0}".format(self.__conn_str))
                 self.__close()
-                print("Reconnecting. {0}".format(self.__conn_str))
+                print("zmq Reconnecting. {0}".format(self.__conn_str))
                 self.__connect()
